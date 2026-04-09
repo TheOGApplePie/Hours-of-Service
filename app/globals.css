@@ -1,26 +1,180 @@
 @import "tailwindcss";
+@plugin "daisyui" {
+  themes: fantasy --default;
+}
 
+/* ── Design tokens ─────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --colour-success: #2a9d8f;
+  --colour-success-dark: #238a7e;
+  --colour-error: #c0392b;
+  --colour-warning: #e6c200;
+  --colour-action: #1e2a3a;
+  --colour-action-text: #c0c0c0;
+  --colour-primary: #dbeafe;
+  --colour-primary-text: #2c87dc;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Button utility classes ────────────────────────────────────────────────── */
+
+/* Generic action — dark blue-grey bg, silver text, inverts on hover */
+.btn-action {
+  background-color: var(--colour-action);
+  color: var(--colour-action-text);
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-action:hover:not(:disabled) {
+  background-color: var(--colour-action-text);
+  color: var(--colour-action);
+}
+.btn-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Elevated action — light blue bg, royal blue text, inverts on hover */
+.btn-primary-action {
+  background-color: var(--colour-primary);
+  color: var(--colour-primary-text);
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-primary-action:hover:not(:disabled) {
+  background-color: var(--colour-primary-text);
+  color: white;
+}
+.btn-primary-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Success — teal bg, white text, inverts on hover */
+.btn-success {
+  background-color: var(--colour-success);
+  color: white;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    outline 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-success:hover:not(:disabled) {
+  background-color: white;
+  color: var(--colour-success);
+  outline: 2px solid var(--colour-success);
+}
+
+/* Warning — gold bg, dark text, inverts on hover */
+.btn-warning-action {
+  background-color: var(--colour-warning);
+  color: #111;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-warning-action:hover:not(:disabled) {
+  background-color: #111;
+  color: var(--colour-warning);
+}
+
+/* Destructive — red bg, white text, inverts on hover */
+.btn-error-action {
+  background-color: var(--colour-error);
+  color: white;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    outline 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-error-action:hover:not(:disabled) {
+  background-color: white;
+  color: var(--colour-error);
+  outline: 2px solid var(--colour-error);
+}
+
+/* ── Utility text colours ──────────────────────────────────────────────────── */
+.text-colour-action-text {
+  color: var(--colour-action-text);
+}
+.text-colour-success {
+  color: var(--colour-success);
+}
+.text-colour-warning {
+  color: var(--colour-warning);
+}
+.text-colour-error {
+  color: var(--colour-error);
+}
+.text-colour-primary {
+  color: var(--colour-primary-text);
+}
+
+/* ── Utility background colours ──────────────────────────────────────────── */
+.bg-colour-success {
+  background-color: var(--colour-success);
+}
+
+/* ── Calendar day range highlight ─────────────────────────────────────────── */
+.day-in-range {
+  background-color: var(--colour-primary);
+  color: var(--colour-primary-text);
+}
+.day-range-start {
+  background-color: var(--colour-primary-text);
+  color: white;
+  border-radius: 9999px 0 0 9999px;
+}
+.day-range-end {
+  background-color: var(--colour-primary-text);
+  color: white;
+  border-radius: 0 9999px 9999px 0;
+}
+
+/* ── (Me) badge ────────────────────────────────────────────────────────────── */
+.badge-me {
+  background-color: var(--colour-action);
+  color: var(--colour-action-text);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
 }
