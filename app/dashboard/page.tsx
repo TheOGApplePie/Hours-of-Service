@@ -8,6 +8,7 @@ import { fetchDashboardMetrics } from "@/lib/dashboardService";
 import {
   MetricKind,
   MetricDriverDetail,
+  DashboardMetrics,
 } from "@/types/dashboard";
 import MetricCard from "@/app/components/MetricCard";
 import MetricLabel from "@/app/components/MetricLabel";
@@ -251,12 +252,7 @@ export default function Dashboard() {
                 onClick={handleOpen}
               />
             );
-            const label = (
-              <MetricLabel
-                label={metric.label}
-                onClick={handleOpen}
-              />
-            );
+            const label = <MetricLabel label={metric.label} />;
 
             return index % 2 === 0 ? (
               <Fragment key={metric.label}>

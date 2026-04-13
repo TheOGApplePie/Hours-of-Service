@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDays, startOfWeek, formatDate } from "date-fns";
+import { addDays, startOfWeek, formatDate, parseISO } from "date-fns";
 import { Calendar, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { pdf } from "@react-pdf/renderer";
@@ -12,7 +12,7 @@ import DatePickerModal from "../components/DatePickerModal";
 import { DailyLogDocument } from "../components/HoursofServicePDF";
 import NotificationBanner from "../components/NotificationBanner";
 
-export default function Documents() {
+function DocumentsContent() {
   const today = new Date();
   const [weekDates, setWeekDates] = useState<Date[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -34,7 +34,7 @@ export default function Documents() {
 
   useEffect(() => {
     const savedDate = localStorage.getItem("selectedDate");
-    setWeekDates(buildWeekFrom(savedDate ? new Date(savedDate) : new Date()));
+    setWeekDates(buildWeekFrom(savedDate ? parseISO(savedDate) : new Date()));
   }, []);
 
   async function handlePrintHoS() {
@@ -170,5 +170,13 @@ export default function Documents() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Documents() {
+  return (
+    <Suspense>
+      <DocumentsContent />
+    </Suspense>
   );
 }

@@ -1,5 +1,4 @@
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "./firebase";
+import { hosRepository } from "@/lib/firebase/index";
 import { Driver } from "./driverService";
 import { DashboardMetrics, MetricDriverDetail, MtoViolation } from "@/types/dashboard";
 import { RawStatus } from "@/types/rawStatus";
@@ -8,10 +7,7 @@ import {
   checkDailyOnDuty,
   checkWeeklyOnDuty,
   checkRestRequirement,
-  calcOnDutyMins,
 } from "./mtoCompliance";
-
-const HOS_COLLECTION = "hours_of_service";
 
 /** Converts hours and minutes to a zero-padded HH:mm string. */
 function formatTime(hour: number, minute: number): string {
@@ -32,6 +28,16 @@ function sortStatuses<T extends { time_of_event: { hour: number; minute: number 
   );
 }
 
+/**
+ * Returns today's date as an ISO string (yyyy-MM-dd) in local time.
+ * Using local time avoids the UTC-offset issue where new Date().toISOString()
+ * can return yesterday's date in timezones behind UTC.
+ */
+function todayISO(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 /** Returns ISO date strings for Mon–Sun of the current week. */
 function getCurrentWeekDates(): string[] {
   const now = new Date();
@@ -44,9 +50,7 @@ function getCurrentWeekDates(): string[] {
   });
 }
 
-/**
- * Returns ISO date strings for a rolling window of N days ending today.
- */
+/** Returns ISO date strings for a rolling window of N days ending today. */
 function getRollingDates(days: number): string[] {
   const now = new Date();
   return Array.from({ length: days }, (_, i) => {
@@ -82,8 +86,8 @@ function getTwoWeekWorkdayDates(): string[] {
  *   - Weekly: > 70h on duty in rolling 7 days
  *   - Rest: no 24h off-duty block in rolling 15 days
  *
- * Firestore `in` queries are limited to 30 items — user IDs are chunked.
- * Date filtering is applied client-side to avoid the disjunction limit.
+ * Future dates are excluded from all checks — a day that hasn't happened
+ * yet cannot have a missing submission or a violation.
  */
 export async function fetchDashboardMetrics(
   drivers: Driver[],
@@ -100,56 +104,29 @@ export async function fetchDashboardMetrics(
     };
   }
 
-  const weekDates = getCurrentWeekDates();
-  // 15-day window covers the rest requirement and the 7-day rolling window
-  const rollingDates = getRollingDates(15);
-  const twoWeekWorkdays = getTwoWeekWorkdayDates();
+  const today = todayISO();
 
-  const allQueryDates = [...new Set([...weekDates, ...rollingDates, ...twoWeekWorkdays])];
-  const allQueryDatesSet = new Set(allQueryDates);
+  const weekDates = getCurrentWeekDates().filter((d) => d <= today);
+  const rollingDates = getRollingDates(15).filter((d) => d <= today);
+  const twoWeekWorkdays = getTwoWeekWorkdayDates().filter((d) => d <= today);
 
-  // Chunk user IDs to respect Firestore's 30-item `in` limit
-  const userIdChunks: string[][] = [];
-  for (let i = 0; i < userIds.length; i += 30) {
-    userIdChunks.push(userIds.slice(i, i + 30));
-  }
+  const allQueryDatesSet = new Set([...weekDates, ...rollingDates, ...twoWeekWorkdays]);
 
-  // Fetch all relevant HoS documents — date filtering applied client-side
-  const rawDocs: { driverId: string; date: string; statuses: RawStatus[] }[] = [];
+  // Fetch all HoS docs for active drivers; date filtering applied below
+  const rawDocs = await hosRepository.fetchForDrivers(userIds);
 
-  await Promise.all(
-    userIdChunks.map(async (chunk) => {
-      const snap = await getDocs(
-        query(collection(db, HOS_COLLECTION), where("driver_id", "in", chunk)),
-      );
-      snap.docs.forEach((d) => {
-        const data = d.data();
-        if (data.statuses?.length && allQueryDatesSet.has(data.date_of_document)) {
-          rawDocs.push({
-            driverId: data.driver_id,
-            date: data.date_of_document,
-            statuses: data.statuses,
-          });
-        }
-      });
-    }),
-  );
-
-  // Index all fetched docs by driverId → date → sorted statuses
+  // Index by driverId → date → sorted statuses
   const docsByDriverAndDate = new Map<string, Map<string, RawStatus[]>>();
-  for (const { driverId, date, statuses } of rawDocs) {
-    if (!docsByDriverAndDate.has(driverId)) {
-      docsByDriverAndDate.set(driverId, new Map());
-    }
-    docsByDriverAndDate.get(driverId)!.set(date, sortStatuses(statuses));
-  }
-
-  // Track submitted dates per driver for the missing HoS check
   const submittedDatesByDriver = new Map<string, Set<string>>();
-  for (const { driverId, date } of rawDocs) {
-    if (!submittedDatesByDriver.has(driverId)) {
-      submittedDatesByDriver.set(driverId, new Set());
-    }
+
+  for (const doc of rawDocs) {
+    const { driver_id: driverId, date_of_document: date, statuses } = doc;
+    if (!statuses?.length || !allQueryDatesSet.has(date)) continue;
+
+    if (!docsByDriverAndDate.has(driverId)) docsByDriverAndDate.set(driverId, new Map());
+    docsByDriverAndDate.get(driverId)!.set(date, sortStatuses(statuses as RawStatus[]));
+
+    if (!submittedDatesByDriver.has(driverId)) submittedDatesByDriver.set(driverId, new Set());
     submittedDatesByDriver.get(driverId)!.add(date);
   }
 
@@ -157,7 +134,6 @@ export async function fetchDashboardMetrics(
   let latestThisWeek: (MetricDriverDetail & { totalMins: number }) | null = null;
   const offendingDriverMap = new Map<string, MetricDriverDetail>();
 
-  // ── Per-user compliance evaluation ──────────────────────────────────────────
   for (const user of activeUsers) {
     const docsByDate = docsByDriverAndDate.get(user.id) ?? new Map<string, RawStatus[]>();
 
@@ -194,7 +170,7 @@ export async function fetchDashboardMetrics(
       }
     }
 
-    // ── MTO daily violations (checked per day in the rolling window) ──
+    // ── MTO daily violations ──
     const dailyViolations: { date: string; violations: MtoViolation[] }[] = [];
 
     for (const date of rollingDates) {
@@ -209,14 +185,13 @@ export async function fetchDashboardMetrics(
       if (dayViolations.length) dailyViolations.push({ date, violations: dayViolations });
     }
 
-    // ── MTO weekly on-duty violation (rolling 7-day window ending today) ──
+    // ── MTO weekly on-duty violation ──
     const sevenDayWindow = rollingDates.slice(-7);
     const weeklyViolation = checkWeeklyOnDuty(docsByDate, sevenDayWindow);
 
     // ── MTO 15-day rest requirement ──
     const restViolation = checkRestRequirement(docsByDate, rollingDates);
 
-    // Collect all violations for this user
     const allViolations: MtoViolation[] = [
       ...dailyViolations.flatMap((d) => d.violations),
       ...(weeklyViolation ? [weeklyViolation] : []),
@@ -224,19 +199,16 @@ export async function fetchDashboardMetrics(
     ];
 
     if (allViolations.length > 0) {
-      // Use the most recent offending day as the representative date
       const offendingDate =
         dailyViolations.length > 0
           ? dailyViolations[dailyViolations.length - 1].date
           : rollingDates[rollingDates.length - 1];
 
-      const representativeStatuses = docsByDate.get(offendingDate) ?? [];
-
       offendingDriverMap.set(user.id, {
         driverId: user.id,
         driverName: user.name,
         date: offendingDate,
-        statuses: representativeStatuses,
+        statuses: docsByDate.get(offendingDate) ?? [],
         violations: allViolations,
       });
     }
