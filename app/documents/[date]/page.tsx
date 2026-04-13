@@ -7,7 +7,7 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, SubmitHandler, FieldValues } from "react-hook-form";
 import { Plus, Delete } from "lucide-react";
 import DailyLogsCanvas from "@/app/components/DailyLogsCanvas";
 import UnsavedChangesModal from "@/app/components/UnsavedChangesModal";
@@ -227,9 +227,10 @@ export default function DocumentView() {
     reset({ ...formData, statuses: preparedStatuses });
   }
 
-  function formatDuration(totalMins: number): string {
-    return `${Math.floor(totalMins / 60)}hr(s) ${totalMins % 60}min(s)`;
-  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const documentDate = new Date(date + "T00:00:00"); // parse as local time
+  const isFutureDate = documentDate > today;
 
   if (loading) {
     return (
@@ -243,6 +244,32 @@ export default function DocumentView() {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <p className="text-red-600">{loadError}</p>
+      </div>
+    );
+  }
+
+  if (isFutureDate) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <div className="flex items-center py-3 gap-4">
+              <button type="button" onClick={handleBack} className="btn-action">
+                ← Back
+              </button>
+              <h2 className="flex-1 text-xl font-bold text-gray-800">
+                {driverName && (
+                  <span className="text-colour-success mr-2">{driverName} —</span>
+                )}
+                Driving logs for <b>{date}</b>
+              </h2>
+            </div>
+            <p className="text-gray-500 mt-4">
+              This date is in the future. Hours of Service records cannot be
+              created or edited for dates that have not yet occurred.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -336,7 +363,7 @@ export default function DocumentView() {
           </div>
 
           {/* Status entries form */}
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form onSubmit={handleSubmit(onSubmit as SubmitHandler<FieldValues>)}>
             <div className="flex items-center flex-wrap py-3 gap-2">
               {errors.statuses?.message && (
                 <div className="w-full">
@@ -346,59 +373,65 @@ export default function DocumentView() {
                 </div>
               )}
 
-              {fields.map((field, index) => (
-                <div
-                  key={field.id}
-                  className="flex p-2 gap-2 border rounded-2xl"
-                >
-                  <div className="grid gap-1">
-                    <label>
-                      <span className="text-sm">Status:</span>
-                      <select
-                        className="p-2 ml-1"
-                        {...register(`statuses.${index}.type`, {
-                          required: "Please select the duty status",
-                        })}
-                      >
-                        <option value="on-duty-driving">On duty driving</option>
-                        <option value="on-duty-not-driving">
-                          On duty not driving
-                        </option>
-                        <option value="off-duty">Off duty</option>
-                      </select>
-                    </label>
-                    {errors.statuses?.[index]?.type?.message && (
-                      <span className="text-red-600 text-xs">
-                        {String(errors.statuses[index].type.message)}
-                      </span>
-                    )}
-
-                    <label>
-                      <span className="text-sm">Time:</span>
-                      <input
-                        className="p-2 ml-1"
-                        type="time"
-                        {...register(`statuses.${index}.mapped_time`, {
-                          required: "Please enter the time of the duty status",
-                        })}
-                      />
-                    </label>
-                    {errors.statuses?.[index]?.mapped_time?.message && (
-                      <span className="text-red-600 text-xs">
-                        {String(errors.statuses[index].mapped_time.message)}
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    className="btn-error-action self-center p-2"
-                    onClick={() => remove(index)}
+              {fields.map((field, index) => {
+                // errors.statuses is a union type that doesn't expose numeric
+                // indexing; cast once here rather than at every usage site.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const statusErr = (errors.statuses as any)?.[index];
+                return (
+                  <div
+                    key={field.id}
+                    className="flex p-2 gap-2 border rounded-2xl"
                   >
-                    <Delete />
-                  </button>
-                </div>
-              ))}
+                    <div className="grid gap-1">
+                      <label>
+                        <span className="text-sm">Status:</span>
+                        <select
+                          className="p-2 ml-1"
+                          {...register(`statuses.${index}.type`, {
+                            required: "Please select the duty status",
+                          })}
+                        >
+                          <option value="on-duty-driving">On duty driving</option>
+                          <option value="on-duty-not-driving">
+                            On duty not driving
+                          </option>
+                          <option value="off-duty">Off duty</option>
+                        </select>
+                      </label>
+                      {statusErr?.type?.message && (
+                        <span className="text-red-600 text-xs">
+                          {String(statusErr.type.message)}
+                        </span>
+                      )}
+
+                      <label>
+                        <span className="text-sm">Time:</span>
+                        <input
+                          className="p-2 ml-1"
+                          type="time"
+                          {...register(`statuses.${index}.mapped_time`, {
+                            required: "Please enter the time of the duty status",
+                          })}
+                        />
+                      </label>
+                      {statusErr?.mapped_time?.message && (
+                        <span className="text-red-600 text-xs">
+                          {String(statusErr.mapped_time.message)}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn-error-action self-center p-2"
+                      onClick={() => remove(index)}
+                    >
+                      <Delete />
+                    </button>
+                  </div>
+                );
+              })}
 
               <button
                 type="button"
@@ -427,4 +460,6 @@ export default function DocumentView() {
     </div>
   );
 }
-
+function formatDuration(totalMins: number): string {
+  return `${Math.floor(totalMins / 60)}hr(s) ${totalMins % 60}min(s)`;
+}

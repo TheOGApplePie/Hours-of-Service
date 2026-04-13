@@ -1,6 +1,6 @@
 # Hours of Service
 
-A web application for electronically logging and managing Hours of Service (HoS) records, built with Next.js 15 and Firebase. Compliance rules follow **MTO Ontario** regulations.
+A web application for electronically logging and managing Hours of Service (HoS) records, built with Next.js 15. Compliance rules follow **MTO Ontario** regulations.
 
 ---
 
@@ -15,6 +15,10 @@ Hours of Service replaces paper-based driver logs with a digital system. It supp
 - See a visual canvas graph of their duty statuses for the day
 - Print a weekly Hours of Service PDF report
 - See active compliance banners when a manager has sent them a reminder, with clickable date chips that navigate directly to the relevant document
+
+**Managers** can do everything Safety officers can, plus:
+- Update driver profiles (name, role)
+- Mark drivers as active or inactive
 
 **Managers and Safety officers** can:
 - View a dashboard with a searchable, paginated list of all users
@@ -42,7 +46,7 @@ The following rules are evaluated for all active users:
 | Weekly on-duty | Max 70 hours NOT off-duty in any rolling 7-day window |
 | 15-day rest | At least one continuous 24-hour off-duty block every 15 days |
 
-Users with `is_active_driver: false` in their Firestore profile are excluded from all compliance metrics.
+Users with `is_active_driver: false` in their profile are excluded from all compliance metrics.
 
 ---
 
@@ -52,8 +56,8 @@ Users with `is_active_driver: false` in their Firestore profile are excluded fro
 |---|---|
 | Framework | [Next.js 15](https://nextjs.org) (App Router) |
 | Language | TypeScript |
-| Auth | Firebase Authentication |
-| Database | Cloud Firestore |
+| Auth | Firebase Authentication (current) |
+| Database | Cloud Firestore (current) |
 | Styling | Tailwind CSS + DaisyUI |
 | Forms | React Hook Form |
 | PDF generation | @react-pdf/renderer |
@@ -62,7 +66,30 @@ Users with `is_active_driver: false` in their Firestore profile are excluded fro
 
 ---
 
-## Project structure
+## Architecture
+
+### Repository pattern
+
+All data access is isolated behind platform-agnostic interfaces in `lib/repositories/`. The current Firebase implementations live in `lib/firebase/`. The single wiring point is `lib/firebase/index.ts` — the only file that changes when migrating to a different backend.
+
+```
+lib/
+  repositories/
+    IAuthProvider.ts           # Auth contract (signIn, signOut, onAuthStateChanged)
+    IDriverRepository.ts       # Driver profile contract
+    IHosRepository.ts          # Hours of Service document contract
+    INotificationRepository.ts # Notification contract
+  firebase/
+    FirebaseAuthProvider.ts    # Firebase Auth implementation
+    FirebaseDriverRepository.ts
+    FirebaseHosRepository.ts
+    FirebaseNotificationRepository.ts
+    index.ts                   # Wires implementations to interfaces — change this to migrate
+```
+
+Service files (`hosService.ts`, `driverService.ts`, etc.) and all UI code import from the interfaces only. No Firebase SDK calls outside of `lib/firebase/`.
+
+### Project structure
 
 ```
 app/
@@ -94,32 +121,36 @@ app/
   page.tsx                   # Root redirect (-> /login, /documents, or /dashboard)
 
 contexts/
-  AuthContext.tsx            # Firebase auth state + role, restored on page refresh
+  AuthContext.tsx            # Auth state + role, restored on page refresh
 
 lib/
-  firebase.ts                # Firebase app initialisation
-  bulkExportService.ts       # Firestore fetch for bulk PDF export
+  firebase.ts                # Firebase SDK initialisation
+  repositories/              # Platform-agnostic data access interfaces
+  firebase/                  # Firebase implementations + wiring
+  bulkExportService.ts       # Fetch for bulk PDF export
   dashboardService.ts        # Dashboard metrics computation
-  driverService.ts           # Firestore operations for user/driver records
-  hosService.ts              # Firestore operations for Hours of Service documents
-  mtoCompliance.ts           # MTO Ontario compliance rule checks
-  notificationService.ts     # Firestore operations for reminder notifications
-  weekUtils.ts               # Week/date utility functions
+  driverService.ts           # Driver profile operations
+  hosService.ts              # Hours of Service document operations
+  mtoCompliance.ts           # MTO Ontario compliance rule checks (pure TS, no data access)
+  notificationService.ts     # Notification operations
+  weekUtils.ts               # Week/date utility functions (pure TS)
 
 types/
   dailyDocument.ts           # DailyDocument and Status interfaces
   dashboard.ts               # DashboardMetrics, MetricDriverDetail, MtoViolation, MetricKind
   notification.ts            # Notification, NotificationType, NotificationStatus
-  rawStatus.ts               # RawStatus (Firestore shape, no mapped_time)
+  rawStatus.ts               # RawStatus (no mapped_time UI field)
 ```
 
 ---
 
-## Firestore collections
+## Data model
+
+### Firestore collections
 
 | Collection | Description |
 |---|---|
-| `drivers` | One document per user. Fields: `name`, `role` (`driver` or `safety` or `manager`), `is_active_driver` (boolean) |
+| `drivers` | One document per user. Fields: `name`, `role` (`driver`, `safety`, or `manager`), `is_active_driver` (boolean) |
 | `hours_of_service` | One document per user per day. Fields: `driver_id`, `date_of_document` (yyyy-MM-dd), `parking_location`, `comments`, `statuses`, `created_at`, `updated_at` |
 | `notifications` | One document per reminder sent. Fields: `driver_id`, `type`, `message`, `sent_by`, `sent_at`, `created_at`, `related_dates`, `status`, `read` |
 
@@ -198,11 +229,11 @@ Each user must have a document in the `drivers` collection with their Firebase A
 }
 ```
 
-Valid roles: `driver`, `safety`, `manager`. Users with `safety` or `manager` roles are directed to the dashboard on login. Set `is_active_driver: false` to exclude a user from compliance metrics.
+Valid roles: `driver`, `safety`, `manager`. Users with `safety` or `manager` roles are directed to the dashboard on login. Set `is_active_driver: false` to exclude a user from compliance metrics without deleting their records.
 
 ### 5. Create Firestore indexes
 
-Create the three composite indexes listed in the **Required Firestore indexes** table above via the Firebase Console under **Firestore -> Indexes -> Composite**.
+Create the three composite indexes listed in the **Required Firestore indexes** table above via the Firebase Console under **Firestore → Indexes → Composite**.
 
 ### 6. Start the development server
 

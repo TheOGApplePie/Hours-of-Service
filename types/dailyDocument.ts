@@ -15,6 +15,6 @@ export interface DailyDocument {
   parking_location: string;
   comments: string;
   statuses: Status[];
-  created_at: { seconds: number; nanoseconds: number };
+  created_at: Date;
   updated_at: Date;
 }

@@ -1,11 +1,9 @@
-import { Timestamp } from "firebase/firestore";
-
 export type NotificationType = "missing_hos" | "violation";
 export type NotificationStatus = "sent" | "failed" | "resolved";
 
 export interface Notification {
   id: string;
-  /** Firebase Auth UID of the driver this notification was sent to. */
+  /** UID of the driver this notification was sent to. */
   driver_id: string;
   /** Category of the notification. */
   type: NotificationType;
@@ -13,8 +11,8 @@ export interface Notification {
   message: string;
   /** UID of the manager who triggered the notification. */
   sent_by: string;
-  sent_at: Timestamp;
-  created_at: Timestamp;
+  sent_at: Date;
+  created_at: Date;
   /** Dates relevant to the issue (e.g. missing submission dates or violation dates). */
   related_dates: string[];
   /** Delivery status — useful for retry logic and audit. */

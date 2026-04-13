@@ -16,7 +16,6 @@ import {
 } from "@/lib/notificationService";
 import { fetchUserDetails } from "@/lib/driverService";
 import { useAuth } from "@/contexts/AuthContext";
-import { formatMins } from "@/lib/mtoCompliance";
 
 interface MetricModalProps {
   label: string;
@@ -27,10 +26,11 @@ interface MetricModalProps {
 
 const REMINDER_KINDS: MetricKind[] = ["offending", "missing"];
 
-const KIND_TO_NOTIFICATION_TYPE: Partial<Record<MetricKind, NotificationType>> = {
-  offending: "violation",
-  missing: "missing_hos",
-};
+const KIND_TO_NOTIFICATION_TYPE: Partial<Record<MetricKind, NotificationType>> =
+  {
+    offending: "violation",
+    missing: "missing_hos",
+  };
 
 /** Converts a RawStatus to a Status with mapped_time for the canvas. */
 function toCanvasStatus(raw: RawStatus): Status {
@@ -85,7 +85,9 @@ function ReminderButton({
   const { user, userRole } = useAuth();
   const notificationType = KIND_TO_NOTIFICATION_TYPE[kind];
 
-  const [previousReminder, setPreviousReminder] = useState<Notification | null>(null);
+  const [previousReminder, setPreviousReminder] = useState<Notification | null>(
+    null,
+  );
   const [senderName, setSenderName] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -94,21 +96,26 @@ function ReminderButton({
 
   useEffect(() => {
     if (!notificationType) return;
-    getLatestNotification(detail.driverId, notificationType).then(async (latest) => {
-      setPreviousReminder(latest);
-      if (latest?.sent_by) {
-        const senderDetails = await fetchUserDetails(latest.sent_by);
-        setSenderName(senderDetails?.name ?? "Unknown");
-      }
-      setLoadingHistory(false);
-    });
+    getLatestNotification(detail.driverId, notificationType).then(
+      async (latest) => {
+        setPreviousReminder(latest);
+        if (latest?.sent_by) {
+          const senderDetails = await fetchUserDetails(latest.sent_by);
+          setSenderName(senderDetails?.name ?? "Unknown");
+        }
+        setLoadingHistory(false);
+      },
+    );
   }, [detail.driverId, notificationType]);
 
   if (!notificationType || !user || loadingHistory) return null;
 
   async function handleSend() {
     if (sending || !user) return;
-    const allowed = await canSendNotification(detail.driverId, notificationType!);
+    const allowed = await canSendNotification(
+      detail.driverId,
+      notificationType!,
+    );
     if (!allowed && previousReminder) return;
 
     setSending(true);
@@ -121,8 +128,9 @@ function ReminderButton({
           : [];
 
     const violationSummary =
-      detail.violations?.map((v) => `${ruleLabel(v.rule)}: ${v.detail}`).join("; ") ??
-      "driving hours violation";
+      detail.violations
+        ?.map((v) => `${ruleLabel(v.rule)}: ${v.detail}`)
+        .join("; ") ?? "driving hours violation";
 
     const message =
       kind === "offending"
@@ -139,7 +147,10 @@ function ReminderButton({
       read: false,
     });
 
-    const updated = await getLatestNotification(detail.driverId, notificationType!);
+    const updated = await getLatestNotification(
+      detail.driverId,
+      notificationType!,
+    );
     setPreviousReminder(updated);
     setSenderName(user.displayName ?? "You");
     setSending(false);
@@ -154,7 +165,7 @@ function ReminderButton({
 
   const hasPreviousReminder = !!previousReminder;
   const sentAtFormatted = previousReminder
-    ? format(previousReminder.sent_at.toDate(), "d MMM yyyy 'at' HH:mm")
+    ? format(previousReminder.sent_at, "d MMM yyyy 'at' HH:mm")
     : null;
 
   return (
@@ -175,7 +186,9 @@ function ReminderButton({
           </button>
         )}
       {resolved && (
-        <p className="text-xs text-colour-success font-semibold">✓ Marked as resolved</p>
+        <p className="text-xs text-colour-success font-semibold">
+          ✓ Marked as resolved
+        </p>
       )}
       <button
         className="btn-error-action self-start"
@@ -208,7 +221,8 @@ function DriverSubline({
     );
   }
   if (kind === "offending") {
-    const rules = detail.violations?.map((v) => ruleLabel(v.rule)).join(", ") ?? "";
+    const rules =
+      detail.violations?.map((v) => ruleLabel(v.rule)).join(", ") ?? "";
     return <span className="block text-xs text-gray-500">{rules}</span>;
   }
   if (kind === "missing") {
@@ -264,14 +278,16 @@ function DriverDetailBody({
         </div>
       )}
 
-      {detail.statuses.length > 0 && kind !== "earliest" && kind !== "latest" && (
-        <div className="canvas-parent">
-          <p className="text-sm font-semibold text-gray-600 mb-1">
-            Hours of Service — {detail.date}
-          </p>
-          <DailyLogsCanvas statuses={detail.statuses.map(toCanvasStatus)} />
-        </div>
-      )}
+      {detail.statuses.length > 0 &&
+        kind !== "earliest" &&
+        kind !== "latest" && (
+          <div className="canvas-parent">
+            <p className="text-sm font-semibold text-gray-600 mb-1">
+              Hours of Service — {detail.date}
+            </p>
+            <DailyLogsCanvas statuses={detail.statuses.map(toCanvasStatus)} />
+          </div>
+        )}
 
       {REMINDER_KINDS.includes(kind) && (
         <ReminderButton detail={detail} kind={kind} />
@@ -338,17 +354,14 @@ export default function MetricModal({
   onClose,
 }: Readonly<MetricModalProps>) {
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 flex flex-col gap-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-800">{label}</h2>
-          <button onClick={onClose} className="btn-action px-3 py-1 text-xl leading-none">
+          <button
+            onClick={onClose}
+            className="btn-action px-3 py-1 text-xl leading-none"
+          >
             ×
           </button>
         </div>

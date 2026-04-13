@@ -1,18 +1,5 @@
-import {
-  addDoc,
-  collection,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  setDoc,
-  doc,
-  where,
-} from "firebase/firestore";
-import { db } from "./firebase";
+import { hosRepository } from "@/lib/firebase/index";
 import { DailyDocument } from "@/types/dailyDocument";
-
-const HOS_COLLECTION = "hours_of_service";
 
 /**
  * Fetches a single HoS document for a given driver and date.
@@ -22,18 +9,7 @@ export async function fetchDocument(
   dateOfDocument: string,
   driverId: string,
 ): Promise<DailyDocument | undefined> {
-  const q = query(
-    collection(db, HOS_COLLECTION),
-    where("driver_id", "==", driverId),
-    where("date_of_document", "==", dateOfDocument),
-    limit(1),
-  );
-
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return undefined;
-
-  const docSnap = snapshot.docs[0];
-  return { id: docSnap.id, ...docSnap.data() } as DailyDocument;
+  return hosRepository.fetchOne(driverId, dateOfDocument);
 }
 
 /**
@@ -44,18 +20,7 @@ export async function fetchDocumentsForDates(
   driverId: string,
   dates: string[],
 ): Promise<DailyDocument[]> {
-  if (!dates.length) return [];
-
-  const q = query(
-    collection(db, HOS_COLLECTION),
-    where("driver_id", "==", driverId),
-    where("date_of_document", "in", dates),
-  );
-
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(
-    (d) => ({ id: d.id, ...d.data() } as DailyDocument),
-  );
+  return hosRepository.fetchForDates(driverId, dates);
 }
 
 /**
@@ -67,19 +32,7 @@ export async function fetchMostRecentDocumentBefore(
   driverId: string,
   beforeDate: string,
 ): Promise<DailyDocument | undefined> {
-  const q = query(
-    collection(db, HOS_COLLECTION),
-    where("driver_id", "==", driverId),
-    where("date_of_document", "<", beforeDate),
-    orderBy("date_of_document", "desc"),
-    limit(1),
-  );
-
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return undefined;
-
-  const docSnap = snapshot.docs[0];
-  return { id: docSnap.id, ...docSnap.data() } as DailyDocument;
+  return hosRepository.fetchLatestBefore(driverId, beforeDate);
 }
 
 /**
@@ -129,8 +82,6 @@ function isValidSubmission(statuses: DailyDocument["statuses"]): boolean {
 /**
  * Checks whether a missing Hours of Service notification has been resolved.
  * Returns true if all related_dates now have a valid submitted document.
- * An empty document or one starting with off-duty and having only one entry
- * does not count as a valid submission.
  */
 export async function checkMissingResolved(
   driverId: string,
@@ -138,7 +89,6 @@ export async function checkMissingResolved(
 ): Promise<boolean> {
   if (!relatedDates.length) return true;
   const docs = await fetchDocumentsForDates(driverId, relatedDates);
-  // Every related date must have a document that passes the validity check
   const validDates = new Set(
     docs
       .filter((doc) => isValidSubmission(doc.statuses))
@@ -153,24 +103,5 @@ export async function checkMissingResolved(
  * Otherwise creates a new one.
  */
 export async function saveDocument(document: DailyDocument): Promise<void> {
-  const payload = {
-    date_of_document: document.date_of_document,
-    driver_id: document.driver_id,
-    parking_location: document.parking_location,
-    comments: document.comments,
-    statuses: document.statuses,
-    updated_at: new Date(),
-  };
-
-  if (document.id) {
-    await setDoc(doc(db, HOS_COLLECTION, document.id), {
-      ...payload,
-      created_at: new Date(document.created_at.seconds * 1000),
-    });
-  } else {
-    await addDoc(collection(db, HOS_COLLECTION), {
-      ...payload,
-      created_at: new Date(),
-    });
-  }
+  return hosRepository.save(document);
 }
