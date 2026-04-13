@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { addDays, startOfWeek, formatDate, parseISO } from "date-fns";
+import { addDays, startOfWeek, formatDate } from "date-fns";
 import { Calendar, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { pdf } from "@react-pdf/renderer";
@@ -11,13 +11,14 @@ import { fetchDocumentsForDates } from "@/lib/hosService";
 import DatePickerModal from "../components/DatePickerModal";
 import { DailyLogDocument } from "../components/HoursofServicePDF";
 import NotificationBanner from "../components/NotificationBanner";
+import UnauthorizedView from "../components/UnauthorizedView";
 
 function DocumentsContent() {
   const today = new Date();
   const [weekDates, setWeekDates] = useState<Date[]>([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const { userRole, user } = useAuth();
+  const { userRole, user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -34,7 +35,9 @@ function DocumentsContent() {
 
   useEffect(() => {
     const savedDate = localStorage.getItem("selectedDate");
-    setWeekDates(buildWeekFrom(savedDate ? parseISO(savedDate) : new Date()));
+    // Parse as local time (appending T00:00:00 avoids UTC midnight → previous day in negative-offset timezones)
+    const anchor = savedDate ? new Date(savedDate + "T00:00:00") : new Date();
+    setWeekDates(buildWeekFrom(anchor));
   }, []);
 
   async function handlePrintHoS() {
@@ -64,7 +67,14 @@ function DocumentsContent() {
     return `/documents/${dateStr}?${params.toString()}`;
   }
 
-  if (!weekDates.length) return null;
+  // Wait for auth to resolve before making any access decision
+  if (authLoading || !weekDates.length) return null;
+
+  // Drivers may only view their own data. If the URL carries a driverId that
+  // doesn't match the signed-in user, block the request entirely.
+  if (userRole === "driver" && user && driverId !== user.uid) {
+    return <UnauthorizedView />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">

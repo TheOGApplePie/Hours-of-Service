@@ -14,6 +14,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<UserRole>;
   signOut: () => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,8 +57,12 @@ export function AuthProvider({
     setUserRole(null);
   };
 
+  const sendPasswordReset = async (email: string) => {
+    await authProvider.sendPasswordReset(email);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, userRole, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, userRole, loading, signIn, signOut, sendPasswordReset }}>
       {children}
     </AuthContext.Provider>
   );
