@@ -3,7 +3,7 @@
 import { useEffect, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { fetchAllDrivers, Driver } from "@/lib/driverService";
+import { fetchAllDrivers, fetchUserDetails, Driver } from "@/lib/driverService";
 import { fetchDashboardMetrics } from "@/lib/dashboardService";
 import {
   MetricKind,
@@ -14,7 +14,9 @@ import MetricCard from "@/app/components/MetricCard";
 import MetricLabel from "@/app/components/MetricLabel";
 import MetricModal from "@/app/components/MetricModal";
 import BulkExportModal from "@/app/components/BulkExportModal";
-import { ArrowRight } from "lucide-react";
+import AddUserModal from "@/app/components/AddUserModal";
+import EditUserModal from "@/app/components/EditUserModal";
+import { ArrowRight, Pencil, UserPlus } from "lucide-react";
 import "./style.css";
 
 const DRIVERS_PER_PAGE = 8;
@@ -40,8 +42,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [activeModal, setActiveModal] = useState<ActiveModal | null>(null);
   const [showBulkExport, setShowBulkExport] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
+  const [managerLocation, setManagerLocation] = useState<string | undefined>();
 
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -52,6 +57,15 @@ export default function Dashboard() {
         .finally(() => setLoading(false));
     });
   }, []);
+
+  // Fetch the manager's organization_location once so it can be passed to AddUserModal
+  useEffect(() => {
+    if (userRole === "manager" && user) {
+      fetchUserDetails(user.uid).then((d) =>
+        setManagerLocation(d?.organization_location),
+      );
+    }
+  }, [user, userRole]);
 
   const filteredDrivers = drivers.filter((driver) =>
     driver.name?.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -74,6 +88,12 @@ export default function Dashboard() {
     details: MetricDriverDetail[],
   ) {
     setActiveModal({ label, details, kind });
+  }
+
+  async function refreshDrivers() {
+    const allDrivers = await fetchAllDrivers();
+    setDrivers(allDrivers);
+    fetchDashboardMetrics(allDrivers).then(setMetrics);
   }
 
   // Build metric definitions from the fetched metrics data
@@ -153,16 +173,30 @@ export default function Dashboard() {
     <div className="flex h-[calc(100vh-72px)]">
       {/* ── Left half: paginated, searchable driver list ── */}
       <div className="w-1/2 flex flex-col gap-3 p-6 border-r border-gray-200">
-        <input
-          className="p-3 border rounded-2xl w-full"
-          type="text"
-          placeholder="Search for a driver..."
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            setCurrentPage(0);
-          }}
-        />
+
+        {/* Search bar + Add User icon (managers only) */}
+        <div className="flex gap-2">
+          <input
+            className="p-3 border rounded-2xl flex-1"
+            type="text"
+            placeholder="Search for a driver..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(0);
+            }}
+          />
+          {userRole === "manager" && (
+            <button
+              title="Add user"
+              onClick={() => setShowAddUser(true)}
+              className="btn-action rounded-2xl px-3 shrink-0"
+            >
+              <UserPlus size={20} />
+            </button>
+          )}
+        </div>
+
         <button
           className="btn-primary-action rounded-2xl"
           onClick={() => setShowBulkExport(true)}
@@ -177,10 +211,9 @@ export default function Dashboard() {
             <p className="text-gray-500 text-sm">No drivers found.</p>
           ) : (
             paginatedDrivers.map((driver) => (
-              <button
+              <div
                 key={driver.id}
-                onClick={() => handleDriverSelect(driver)}
-                className="card w-full text-left hover:bg-gray-50 transition-colors cursor-pointer"
+                className="card w-full text-left"
                 style={{
                   display: "flex",
                   flexDirection: "row",
@@ -199,12 +232,26 @@ export default function Dashboard() {
                     {driver.role}
                   </p>
                 </div>
-                <ArrowRight
-                  className="text-black shrink-0"
-                  size={30}
-                  strokeWidth={2.5}
-                />
-              </button>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {userRole === "manager" && driver.id !== user?.uid && (
+                    <button
+                      title="Edit user"
+                      onClick={() => setEditingDriver(driver)}
+                      className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                  )}
+                  <button
+                    title="View hours of service"
+                    onClick={() => handleDriverSelect(driver)}
+                    className="p-1 text-black hover:text-gray-600 transition-colors cursor-pointer"
+                  >
+                    <ArrowRight size={30} strokeWidth={2.5} />
+                  </button>
+                </div>
+              </div>
             ))
           )}
         </div>
@@ -283,6 +330,32 @@ export default function Dashboard() {
           drivers={drivers}
           metrics={metrics}
           onClose={() => setShowBulkExport(false)}
+        />
+      )}
+
+      {showAddUser && (
+        <AddUserModal
+          managerLocation={managerLocation}
+          onClose={() => setShowAddUser(false)}
+          onCreated={async () => {
+            setShowAddUser(false);
+            await refreshDrivers();
+          }}
+        />
+      )}
+
+      {editingDriver && (
+        <EditUserModal
+          driver={editingDriver}
+          onClose={() => setEditingDriver(null)}
+          onSaved={async () => {
+            setEditingDriver(null);
+            await refreshDrivers();
+          }}
+          onDeleted={async () => {
+            setEditingDriver(null);
+            await refreshDrivers();
+          }}
         />
       )}
     </div>

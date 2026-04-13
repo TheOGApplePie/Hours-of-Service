@@ -3,6 +3,7 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged as firebaseOnAuthStateChanged,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import app from "@/lib/firebase";
 import { IAuthProvider, AuthUser } from "@/lib/repositories/IAuthProvider";
@@ -27,5 +28,9 @@ export class FirebaseAuthProvider implements IAuthProvider {
           : null,
       );
     });
+  }
+
+  async sendPasswordReset(email: string): Promise<void> {
+    await sendPasswordResetEmail(this.auth, email);
   }
 }

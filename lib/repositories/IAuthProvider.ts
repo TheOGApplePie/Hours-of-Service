@@ -15,4 +15,6 @@ export interface IAuthProvider {
   signOut(): Promise<void>;
   /** Subscribe to auth state changes. Returns an unsubscribe function. */
   onAuthStateChanged(callback: (user: AuthUser | null) => void): () => void;
+  /** Sends a password reset email to the given address if an account exists. */
+  sendPasswordReset(email: string): Promise<void>;
 }

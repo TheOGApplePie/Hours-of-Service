@@ -11,16 +11,19 @@ import { useFieldArray, useForm, SubmitHandler, FieldValues } from "react-hook-f
 import { Plus, Delete } from "lucide-react";
 import DailyLogsCanvas from "@/app/components/DailyLogsCanvas";
 import UnsavedChangesModal from "@/app/components/UnsavedChangesModal";
+import UnauthorizedView from "@/app/components/UnauthorizedView";
 import {
   fetchDocument,
   fetchMostRecentDocumentBefore,
   saveDocument,
 } from "@/lib/hosService";
 import { Status, DailyDocument } from "@/types/dailyDocument";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function DocumentView() {
   const searchParams = useSearchParams();
   const { date } = useParams<{ date: string }>();
+  const { user, userRole, loading: authLoading } = useAuth();
 
   if (!date) redirect("/");
 
@@ -231,6 +234,20 @@ export default function DocumentView() {
   today.setHours(0, 0, 0, 0);
   const documentDate = new Date(date + "T00:00:00"); // parse as local time
   const isFutureDate = documentDate > today;
+
+  // Wait for auth to resolve before making any access decision
+  if (authLoading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  // Drivers may only view their own data
+  if (userRole === "driver" && user && driverId !== user.uid) {
+    return <UnauthorizedView />;
+  }
 
   if (loading) {
     return (
