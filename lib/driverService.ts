@@ -12,6 +12,12 @@ export interface Driver {
   hire_date?: string;
   /** When true, this user has been soft-deleted and should not appear in any lists. */
   deleted?: boolean;
+  /**
+   * Email address for this driver.
+   * Stored here so the email service can fetch it without hitting Firebase Auth directly.
+   * Populate this field when creating or updating the driver profile.
+   */
+  email?: string;
 }
 
 /** Fetches all non-deleted documents from the `drivers` collection. */
