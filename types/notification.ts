@@ -19,6 +19,8 @@ export interface Notification {
   status: NotificationStatus;
   /** Whether the driver has read/acknowledged the notification. */
   read: boolean;
+  /** Populated when status is "failed" — describes why delivery failed. */
+  error_message?: string;
 }
 
 /** Shape used when creating a new notification — id and timestamps are set by the service. */
