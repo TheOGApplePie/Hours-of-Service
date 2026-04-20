@@ -7,8 +7,13 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-import { useFieldArray, useForm, SubmitHandler, FieldValues } from "react-hook-form";
-import { Plus, Delete } from "lucide-react";
+import {
+  useFieldArray,
+  useForm,
+  SubmitHandler,
+  FieldValues,
+} from "react-hook-form";
+import { Plus, Delete, Loader2 } from "lucide-react";
 import DailyLogsCanvas from "@/app/components/DailyLogsCanvas";
 import UnsavedChangesModal from "@/app/components/UnsavedChangesModal";
 import UnauthorizedView from "@/app/components/UnauthorizedView";
@@ -43,8 +48,12 @@ export default function DocumentView() {
   const [onDutyNotDrivingMins, setOnDutyNotDrivingMins] = useState(0);
   const [onDutyDrivingMins, setOnDutyDrivingMins] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [showToast, setShowToast] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingNavUrl, setPendingNavUrl] = useState<string | null>(null);
+
+  type SaveState = "idle" | "saving" | "saved" | "failed";
+  const [saveState, setSaveState] = useState<SaveState>("idle");
 
   // Ref used to guard against state updates after unmount
   const isMountedRef = useRef(true);
@@ -206,6 +215,16 @@ export default function DocumentView() {
     setPendingNavUrl(backUrl);
   }
 
+  // When the user edits the form after a successful save, revert the button to its default label
+  useEffect(() => {
+    if (isDirty && saveState === "saved") setSaveState("idle");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty]);
+
+  function unveilToast() {
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 5000);
+  }
   async function onSubmit(formData: DailyDocument) {
     if (!formData.statuses || formData.statuses.length < 2) {
       setError("statuses", {
@@ -224,10 +243,17 @@ export default function DocumentView() {
       },
     }));
 
-    await saveDocument({ ...formData, statuses: preparedStatuses });
-
-    // Reset dirty state so the unsaved changes guard no longer triggers
-    reset({ ...formData, statuses: preparedStatuses });
+    setSaveState("saving");
+    try {
+      await saveDocument({ ...formData, statuses: preparedStatuses });
+      // Reset dirty state so the unsaved changes guard no longer triggers
+      reset({ ...formData, statuses: preparedStatuses });
+      setSaveState("saved");
+    } catch {
+      setSaveState("failed");
+    } finally {
+      unveilToast();
+    }
   }
 
   const today = new Date();
@@ -276,7 +302,9 @@ export default function DocumentView() {
               </button>
               <h2 className="flex-1 text-xl font-bold text-gray-800">
                 {driverName && (
-                  <span className="text-colour-success mr-2">{driverName} —</span>
+                  <span className="text-colour-success mr-2">
+                    {driverName} —
+                  </span>
                 )}
                 Driving logs for <b>{date}</b>
               </h2>
@@ -308,8 +336,25 @@ export default function DocumentView() {
         />
       )}
 
+      {
+        <div
+          className={`${showToast ? "opacity-100" : "opacity-0"} transition-opacity duration-500 fixed top-6 right-6 z-50 p-5 rounded-xl shadow-lg text-white font-semibold text-lg ${
+            saveState === "saved" ? "bg-colour-success" : "bg-colour-error"
+          }`}
+        >
+          {saveState === "saved"
+            ? "✓ Hours of Service updated"
+            : "Save failed — please try again"}
+        </div>
+      }
+
       <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="bg-white rounded-lg shadow-lg p-6 relative">
+          {saveState === "saving" && (
+            <div className="absolute inset-0 bg-white/60 rounded-lg flex items-center justify-center z-10">
+              <Loader2 size={40} className="animate-spin text-colour-success" />
+            </div>
+          )}
           {/* Page header */}
           <div className="flex items-center py-3 gap-4 flex-wrap">
             <button
@@ -409,7 +454,9 @@ export default function DocumentView() {
                             required: "Please select the duty status",
                           })}
                         >
-                          <option value="on-duty-driving">On duty driving</option>
+                          <option value="on-duty-driving">
+                            On duty driving
+                          </option>
                           <option value="on-duty-not-driving">
                             On duty not driving
                           </option>
@@ -428,7 +475,8 @@ export default function DocumentView() {
                           className="p-2 ml-1"
                           type="time"
                           {...register(`statuses.${index}.mapped_time`, {
-                            required: "Please enter the time of the duty status",
+                            required:
+                              "Please enter the time of the duty status",
                           })}
                         />
                       </label>
@@ -442,6 +490,7 @@ export default function DocumentView() {
                     <button
                       type="button"
                       className="btn-error-action self-center p-2"
+                      disabled={saveState === "saving"}
                       onClick={() => remove(index)}
                     >
                       <Delete />
@@ -452,7 +501,8 @@ export default function DocumentView() {
 
               <button
                 type="button"
-                className="btn-success p-2"
+                className="btn-primary-action p-2"
+                disabled={saveState === "saving"}
                 onClick={() =>
                   append({
                     type: "on-duty-driving",
@@ -464,12 +514,24 @@ export default function DocumentView() {
                   })
                 }
               >
-                <Plus />
+                <Plus /> Add Status
               </button>
             </div>
 
-            <button type="submit" className="btn-primary-action">
-              Save
+            <button
+              type="submit"
+              className={
+                saveState === "failed" ? "btn-error-action" : "btn-success"
+              }
+              disabled={saveState === "saving"}
+            >
+              {saveState === "saving"
+                ? "Saving…"
+                : saveState === "saved"
+                  ? "✓ Saved"
+                  : saveState === "failed"
+                    ? "Save failed — retry?"
+                    : "Save"}
             </button>
           </form>
         </div>

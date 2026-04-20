@@ -15,6 +15,7 @@ import {
   resolveNotification,
 } from "@/lib/notificationService";
 import { fetchUserDetails } from "@/lib/driverService";
+import { FirebaseEmailProvider } from "@/lib/email/FirebaseEmailProvider";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface MetricModalProps {
@@ -91,6 +92,7 @@ function ReminderButton({
   const [senderName, setSenderName] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [sendFailed, setSendFailed] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [resolved, setResolved] = useState(false);
 
@@ -112,13 +114,10 @@ function ReminderButton({
 
   async function handleSend() {
     if (sending || !user) return;
-    const allowed = await canSendNotification(
-      detail.driverId,
-      notificationType!,
-    );
-    if (!allowed && previousReminder) return;
+    await canSendNotification(detail.driverId, notificationType!);
 
     setSending(true);
+    setSendFailed(false);
 
     const relatedDates =
       kind === "missing"
@@ -137,13 +136,41 @@ function ReminderButton({
         ? `Reminder: MTO violation on ${relatedDates.join(", ")} — ${violationSummary}. Please review your Hours of Service records.`
         : `Reminder: You have missing Hours of Service submissions for ${relatedDates.join(", ")}. Please submit them as soon as possible.`;
 
+    // ── Send email ──────────────────────────────────────────────────────────
+    let emailStatus: "sent" | "failed" = "sent";
+
+    const driverDetails = await fetchUserDetails(detail.driverId);
+    const driverEmail = driverDetails?.email;
+    console.log(driverDetails)
+
+    if (driverEmail) {
+      try {
+        const subject =
+          kind === "offending"
+            ? `Hours of Service Violation – ${detail.driverName}`
+            : `Missing Hours of Service Submission – ${detail.driverName}`;
+        await new FirebaseEmailProvider().sendEmail({
+          to: driverEmail,
+          subject,
+          body: message,
+          fromUserId: user.uid,
+          fromEmail: user.email ?? undefined,
+        });
+      } catch {
+        emailStatus = "failed";
+      }
+    } else {
+      emailStatus = "failed";
+    }
+
+    // ── Record notification (always, regardless of delivery outcome) ────────
     await createNotification({
       driver_id: detail.driverId,
       type: notificationType!,
       message,
       sent_by: user.uid,
       related_dates: relatedDates,
-      status: "sent",
+      status: emailStatus,
       read: false,
     });
 
@@ -154,7 +181,11 @@ function ReminderButton({
     setPreviousReminder(updated);
     setSenderName(user.displayName ?? "You");
     setSending(false);
-    setSent(true);
+    if (emailStatus === "failed") {
+      setSendFailed(true);
+    } else {
+      setSent(true);
+    }
   }
 
   async function handleResolve() {
@@ -164,6 +195,19 @@ function ReminderButton({
   }
 
   const hasPreviousReminder = !!previousReminder;
+
+  function buttonLabel(
+    isSending: boolean,
+    isSent: boolean,
+    isFailed: boolean,
+    hasPrevious: boolean,
+  ): string {
+    if (isSending) return "Sending…";
+    if (isSent) return "✓ Reminder sent";
+    if (isFailed) return "Retry";
+    if (hasPrevious) return "Send reminder again";
+    return "Send reminder email";
+  }
   const sentAtFormatted = previousReminder
     ? format(previousReminder.sent_at, "d MMM yyyy 'at' HH:mm")
     : null;
@@ -190,18 +234,17 @@ function ReminderButton({
           ✓ Marked as resolved
         </p>
       )}
+      {sendFailed && (
+        <p className="text-xs text-red-600 font-semibold">
+          Email could not be delivered. The driver may not have an email address on file.
+        </p>
+      )}
       <button
         className="btn-error-action self-start"
         onClick={handleSend}
         disabled={sending}
       >
-        {sending
-          ? "Sending…"
-          : sent
-            ? "✓ Reminder sent"
-            : hasPreviousReminder
-              ? "Send reminder again"
-              : "Send reminder email"}
+        {buttonLabel(sending, sent, sendFailed, hasPreviousReminder)}
       </button>
     </div>
   );

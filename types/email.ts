@@ -11,4 +11,6 @@ export type SendEmailInput = {
   body: string;
   /** UID of the manager who triggered the send — used for audit records. */
   fromUserId: string;
+  /** Actual email address of the manager. Used as Reply-To by the email provider. */
+  fromEmail?: string;
 };

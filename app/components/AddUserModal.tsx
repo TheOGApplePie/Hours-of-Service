@@ -54,6 +54,7 @@ export default function AddUserModal({
 
       await createDriverProfile(uid, {
         name: data.name.trim(),
+        email: data.email.trim(),
         role: data.role,
         is_active_driver: true,
         hire_date: today,

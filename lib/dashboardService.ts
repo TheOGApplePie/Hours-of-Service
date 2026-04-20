@@ -19,6 +19,16 @@ function toMinutes(time: { hour: number; minute: number }): number {
   return time.hour * 60 + time.minute;
 }
 
+/**
+ * Formats a Date as a local-time ISO date string (yyyy-MM-dd).
+ * Uses local-time getters instead of toISOString() to avoid UTC-offset
+ * errors in timezones behind UTC (e.g. Ontario EDT = UTC-4), where
+ * toISOString() can return the previous calendar day.
+ */
+function localDateISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 /** Returns a new array of statuses sorted chronologically by time_of_event. */
 function sortStatuses<T extends { time_of_event: { hour: number; minute: number } }>(
   statuses: T[],
@@ -46,7 +56,7 @@ function getCurrentWeekDates(): string[] {
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    return d.toISOString().split("T")[0];
+    return localDateISO(d);
   });
 }
 
@@ -56,7 +66,7 @@ function getRollingDates(days: number): string[] {
   return Array.from({ length: days }, (_, i) => {
     const d = new Date(now);
     d.setDate(now.getDate() - (days - 1 - i));
-    return d.toISOString().split("T")[0];
+    return localDateISO(d);
   });
 }
 
@@ -71,9 +81,13 @@ function getTwoWeekWorkdayDates(): string[] {
   return Array.from({ length: 14 }, (_, i) => {
     const d = new Date(startMonday);
     d.setDate(startMonday.getDate() + i);
-    return d.toISOString().split("T")[0];
+    return localDateISO(d);
   }).filter((dateStr) => {
-    const day = new Date(dateStr).getDay();
+    // Parse as local midnight — new Date("yyyy-MM-dd") is UTC midnight, which
+    // shifts the day-of-week by -1 in UTC-negative timezones (e.g. Ontario EDT),
+    // causing Mondays to be misidentified as Sundays and filtered out.
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const day = new Date(y, m - 1, d).getDay();
     return day !== 0 && day !== 6;
   });
 }
